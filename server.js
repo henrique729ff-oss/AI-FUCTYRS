@@ -7,7 +7,8 @@ app.set("trust proxy", 1);
 app.use(express.json({ limit: "1mb" }));
 
 const API_KEY = process.env.GEMINI_API_KEY;
-const MODEL = process.env.MODEL || "gemini-2.5-flash";
+const MODEL = process.env.MODEL || "gemini-3.8-flash";
+const FALLBACK = process.env.FALLBACK_MODEL || "gemini-flash-latest";
 const SYS =
   "Você é a Futuristy, uma IA amigável, esperta e divertida, criada para conversar em português do Brasil. Ajude com tarefas de casa (explicando passo a passo), responda perguntas, escreva textos e crie jogos. Quando pedirem um jogo ou página, entregue UM arquivo HTML completo e funcional (CSS e JS dentro dele) em um único bloco ```html, com controles de toque para celular. Responda sempre no idioma da pessoa e seja claro e curto.";
 
@@ -35,24 +36,42 @@ app.post("/chat", async (req, res) => {
       }));
     if (!contents.length) return res.status(400).json({ error: "Sem mensagens" });
 
-    const url =
-      "https://generativelanguage.googleapis.com/v1beta/models/" +
-      encodeURIComponent(MODEL) +
-      ":generateContent";
-    const r = await fetch(url, {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-goog-api-key": API_KEY },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: SYS }] },
-        contents,
-        generationConfig: { maxOutputTokens: 8000 },
-      }),
+    const body = JSON.stringify({
+      systemInstruction: { parts: [{ text: SYS }] },
+      contents,
+      generationConfig: { maxOutputTokens: 8000 },
     });
-    const data = await r.json();
-    if (!r.ok) {
-      console.error("Erro Gemini:", JSON.stringify(data));
-      return res.status(502).json({ error: data.error?.message || "Erro na API" });
+    const models = [MODEL, FALLBACK].filter((m, i, a) => m && a.indexOf(m) === i);
+    let data = null;
+    let lastErr = "Erro na API";
+    outer: for (const model of models) {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const r = await fetch(
+            "https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(model) + ":generateContent",
+            {
+              method: "POST",
+              headers: { "content-type": "application/json", "x-goog-api-key": API_KEY },
+              body,
+              signal: AbortSignal.timeout(40000),
+            }
+          );
+          const j = await r.json();
+          if (r.ok) {
+            data = j;
+            break outer;
+          }
+          console.error("Erro Gemini (" + model + "):", JSON.stringify(j));
+          lastErr = j.error?.message || lastErr;
+          if (![429, 500, 503, 504].includes(r.status)) break; // erro que não adianta repetir
+        } catch (e) {
+          console.error("Falha ao chamar " + model + ":", e.message);
+          lastErr = "Tempo esgotado";
+        }
+        await new Promise((ok) => setTimeout(ok, 1500));
+      }
     }
+    if (!data) return res.status(502).json({ error: lastErr });
     const text = (data.candidates?.[0]?.content?.parts || []).map((p) => p.text || "").join("");
     res.json({ text });
   } catch (e) {
