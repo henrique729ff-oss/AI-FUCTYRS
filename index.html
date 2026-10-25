@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Futuristy</title>
+<style>
+:root{--bg:#f6f3ff;--card:#ffffff;--text:#1b1533;--muted:#6b6485;--a:#7c3aed;--b:#ec4899;--ring:rgba(124,58,237,.22);--code:#1b1533;--codet:#f4f1ff;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f0b1f;--card:#1a1433;--text:#f4f1ff;--muted:#a79fc4;--ring:rgba(168,120,255,.3);--code:#0a0716;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0f0b1f;--card:#1a1433;--text:#f4f1ff;--muted:#a79fc4;--ring:rgba(168,120,255,.3);--code:#0a0716;color-scheme:dark}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+#app{height:100%;display:flex;flex-direction:column;max-width:760px;margin:0 auto}
+header{padding:14px 18px;display:flex;align-items:center;gap:10px}
+.logo{font-size:1.6rem;font-weight:800;letter-spacing:-.5px;background:linear-gradient(90deg,var(--a),var(--b));-webkit-background-clip:text;background-clip:text;color:transparent}
+.tag{color:var(--muted);font-size:.8rem;flex:1}
+#clear{background:none;border:1px solid var(--ring);color:var(--muted);border-radius:12px;padding:6px 10px;font-size:.8rem;cursor:pointer}
+#chat{flex:1;overflow-y:auto;padding:8px 14px;display:flex;flex-direction:column;gap:12px}
+.msg{max-width:88%;padding:12px 15px;border-radius:20px;line-height:1.5;font-size:.97rem;word-wrap:break-word;overflow-wrap:anywhere}
+.user{align-self:flex-end;color:#fff;background:linear-gradient(90deg,var(--a),var(--b));border-bottom-right-radius:6px;white-space:pre-wrap}
+.bot{align-self:flex-start;background:var(--card);box-shadow:0 6px 20px var(--ring);border-bottom-left-radius:6px}
+.bot p{margin:0 0 8px}.bot p:last-child{margin:0}
+.bot code{background:var(--bg);padding:1px 6px;border-radius:6px;font-size:.88em}
+.codebox{margin:8px 0;border-radius:14px;overflow:hidden;background:var(--code)}
+.codebar{display:flex;gap:8px;justify-content:flex-end;padding:6px 8px}
+.codebar button{border:0;border-radius:10px;padding:6px 12px;font-size:.78rem;font-weight:700;color:#fff;cursor:pointer;background:linear-gradient(90deg,var(--a),var(--b))}
+.codebox pre{margin:0;padding:4px 12px 12px;overflow-x:auto;color:var(--codet);font-size:.8rem;max-height:260px}
+.codebox pre code{background:none;padding:0;color:inherit}
+iframe.game{width:100%;height:340px;border:0;background:#fff;display:block}
+.welcome{margin:auto;text-align:center;padding:10px}
+.welcome h2{margin:0 0 6px;font-size:1.3rem}
+.welcome p{color:var(--muted);margin:0 0 16px;font-size:.92rem}
+.chips{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+.chips button{border:1px solid var(--a);background:var(--card);color:var(--text);border-radius:999px;padding:9px 14px;font-size:.85rem;cursor:pointer}
+form{display:flex;gap:8px;padding:10px 14px 14px}
+textarea{flex:1;resize:none;border:2px solid var(--ring);background:var(--card);color:var(--text);border-radius:20px;padding:13px 16px;font:inherit;font-size:1rem;max-height:120px;outline:none}
+textarea:focus{border-color:var(--a)}
+#send{width:52px;border:0;border-radius:50%;color:#fff;font-size:1.3rem;cursor:pointer;background:linear-gradient(90deg,var(--a),var(--b));box-shadow:0 8px 20px var(--ring)}
+#send:disabled{opacity:.5}
+.dots span{display:inline-block;width:7px;height:7px;margin:0 2px;border-radius:50%;background:var(--a);animation:b 1s infinite}
+.dots span:nth-child(2){animation-delay:.15s}.dots span:nth-child(3){animation-delay:.3s}
+@keyframes b{0%,80%,100%{transform:translateY(0);opacity:.4}40%{transform:translateY(-5px);opacity:1}}
+</style>
+</head>
+<body>
+<div id="app">
+  <header><div class="logo">Futuristy</div><div class="tag">sua IA de bolso</div><button id="clear" type="button">Nova conversa</button></header>
+  <div id="chat"></div>
+  <form id="form">
+    <textarea id="input" rows="1" placeholder="Escreva sua mensagem…"></textarea>
+    <button id="send" type="submit" aria-label="Enviar">➤</button>
+  </form>
+</div>
+<script>
+(function(){
+  var chat=document.getElementById("chat"),input=document.getElementById("input"),send=document.getElementById("send"),form=document.getElementById("form");
+  var SYS="Você é a Futuristy, uma IA amigável, esperta e divertida, criada para conversar em português do Brasil. Ajude com tarefas de casa (explicando passo a passo), responda perguntas, escreva textos e crie jogos. Quando pedirem um jogo ou página, entregue UM arquivo HTML completo e funcional (CSS e JS dentro dele) em um único bloco ```html, com controles de toque para celular. Responda sempre no idioma da pessoa e seja claro e curto.";
+  var WORKER_URL="/chat";
+  var history=[],busy=false;
+
+
+  function esc(s){return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+  function inline(s){return esc(s).replace(/`([^`]+)`/g,"<code>$1</code>").replace(/\*\*([^*]+)\*\*/g,"<b>$1</b>");}
+  function render(t){
+    var out="",parts=t.split("```");
+    for(var i=0;i<parts.length;i++){
+      if(i%2===0){
+        parts[i].split(/\n{2,}/).forEach(function(p){if(p.trim())out+="<p>"+inline(p.trim()).replace(/\n/g,"<br>")+"</p>";});
+      }else{
+        var nl=parts[i].indexOf("\n"),lang=nl>-1?parts[i].slice(0,nl).trim().toLowerCase():"",code=nl>-1?parts[i].slice(nl+1):parts[i];
+        var isHtml=(lang==="html"||/<!doctype html|<html|<body|<canvas/i.test(code));
+        var ext=isHtml?"html":({python:"py",py:"py",javascript:"js",js:"js",css:"css",json:"json"}[lang]||"txt");
+        out+='<div class="codebox"><div class="codebar">'+(isHtml?'<button type="button" data-act="full">⛶ Tela cheia</button><button type="button" data-act="play">▶ Jogar</button>':'')+'<button type="button" data-act="dl" data-ext="'+ext+'">⬇ Baixar</button><button type="button" data-act="copy">Copiar</button></div><pre><code>'+esc(code)+'</code></pre></div>';
+      }
+    }
+    return out;
+  }
+  function add(role,html){
+    var w=chat.querySelector(".welcome");if(w)w.remove();
+    var d=document.createElement("div");d.className="msg "+role;
+    if(role==="user")d.textContent=html;else d.innerHTML=html;
+    chat.appendChild(d);chat.scrollTop=chat.scrollHeight;return d;
+  }
+  function welcome(){
+    chat.innerHTML='<div class="welcome"><h2>Oi! Eu sou a Futuristy ✨</h2><p>Posso ajudar na tarefa de casa, responder dúvidas e criar jogos.</p><div class="chips"><button type="button">Crie um jogo da cobrinha</button><button type="button">Me explique frações</button><button type="button">Me conte uma curiosidade</button></div></div>';
+  }
+  function mk(box,code){var f=document.createElement("iframe");f.className="game";f.setAttribute("sandbox","allow-scripts");f.setAttribute("allow","fullscreen");f.srcdoc=code;box.appendChild(f);}
+  chat.addEventListener("click",function(e){
+    var b=e.target.closest("button");if(!b)return;
+    if(b.parentNode.className==="chips"){ask(b.textContent);return;}
+    var box=b.closest(".codebox");if(!box)return;
+    var code=box.querySelector("code").textContent;
+    if(b.dataset.act==="dl"){
+      var bl=new Blob([code],{type:"text/plain"}),a=document.createElement("a");a.href=URL.createObjectURL(bl);a.download="futuristy."+b.dataset.ext;document.body.appendChild(a);a.click();a.remove();b.textContent="✅ Baixado";
+      return;
+    }
+    if(b.dataset.act==="copy"){
+      var ok=function(){b.textContent="Copiado!";setTimeout(function(){b.textContent="Copiar";},1500);};
+      if(navigator.clipboard)navigator.clipboard.writeText(code).then(ok,function(){});
+    }else if(b.dataset.act==="play"){
+      var old=box.querySelector("iframe");if(old){old.remove();b.textContent="▶ Jogar";return;}
+      mk(box,code);b.textContent="■ Fechar";
+    }else if(b.dataset.act==="full"){
+      var fr=box.querySelector("iframe");
+      if(!fr){mk(box,code);box.querySelector('[data-act="play"]').textContent="■ Fechar";fr=box.querySelector("iframe");}
+      if(fr.requestFullscreen)fr.requestFullscreen();
+    }
+  });
+  function ask(text){
+    if(busy||!text.trim())return;
+        busy=true;send.disabled=true;
+    history.push({role:"user",content:text});add("user",text);
+    var bot=add("bot",'<span class="dots"><span></span><span></span><span></span></span>');
+    fetch(WORKER_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({messages:history})}).then(function(x){return x.json();}).then(function(r){
+      if(r.error)throw new Error(r.error);
+      history.push({role:"assistant",content:r.text});bot.innerHTML=render(r.text);
+      var pb=bot.querySelector('[data-act="play"]');if(pb)pb.click();
+    }).catch(function(err){
+      history.pop();
+      bot.innerHTML="<p>"+"Algo deu errado ou o limite acabou. Tente de novo em instantes."+"</p>";
+    }).then(function(){busy=false;send.disabled=false;chat.scrollTop=chat.scrollHeight;});
+  }
+  form.addEventListener("submit",function(e){e.preventDefault();var t=input.value;input.value="";input.style.height="auto";ask(t);});
+  input.addEventListener("input",function(){input.style.height="auto";input.style.height=Math.min(input.scrollHeight,120)+"px";});
+  document.getElementById("clear").addEventListener("click",function(){if(busy)return;history=[];welcome();});
+  welcome();
+})();
+</script>
+</body>
+</html>
