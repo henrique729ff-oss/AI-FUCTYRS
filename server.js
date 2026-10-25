@@ -1,4 +1,5 @@
 const express = require("express");
+const fs = require("fs");
 const path = require("path");
 
 const app = express();
@@ -52,7 +53,24 @@ app.post("/chat", async (req, res) => {
   }
 });
 
-app.use(express.static(path.join(__dirname, "public")));
+// Acha o index.html na pasta public ou na raiz do projeto
+function findIndex() {
+  const options = [path.join(__dirname, "public", "index.html"), path.join(__dirname, "index.html")];
+  return options.find((p) => fs.existsSync(p));
+}
+
+// Entrega o site já apontando para /chat (funciona com o arquivo original ou o ajustado)
+app.get(["/", "/index.html"], (req, res) => {
+  const file = findIndex();
+  if (!file) return res.status(404).send("index.html não encontrado");
+  let html = fs.readFileSync(file, "utf8");
+  html = html.replace('var WORKER_URL="COLE_AQUI_O_LINK_DO_SEU_WORKER";', 'var WORKER_URL="/chat";');
+  html = html.replace(
+    /if\(WORKER_URL\.indexOf\("http"\)!==0\)\{add\("bot","<p>Falta colocar o link do servidor no site\.<\/p>"\);return;\}/,
+    ""
+  );
+  res.type("html").send(html);
+});
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log("Futuristy rodando na porta " + PORT));
