@@ -53,7 +53,7 @@ app.post("/chat", async (req, res) => {
               method: "POST",
               headers: { "content-type": "application/json", "x-goog-api-key": API_KEY },
               body,
-              signal: AbortSignal.timeout(40000),
+              signal: AbortSignal.timeout(15000),
             }
           );
           const j = await r.json();
@@ -68,7 +68,7 @@ app.post("/chat", async (req, res) => {
           console.error("Falha ao chamar " + model + ":", e.message);
           lastErr = "Tempo esgotado";
         }
-        await new Promise((ok) => setTimeout(ok, 1500));
+        await new Promise((ok) => setTimeout(ok, 800));
       }
     }
     if (!data) return res.status(502).json({ error: lastErr });
@@ -97,6 +97,33 @@ app.get(["/", "/index.html"], (req, res) => {
     ""
   );
   res.type("html").send(html);
+});
+
+// Página de teste: abra /teste no navegador para ver o erro real da IA
+app.get("/teste", async (req, res) => {
+  const out = [];
+  out.push("Chave configurada: " + (API_KEY ? "sim (" + API_KEY.length + " caracteres)" : "NÃO"));
+  for (const model of [MODEL, FALLBACK]) {
+    const t0 = Date.now();
+    try {
+      const r = await fetch(
+        "https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(model) + ":generateContent",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-goog-api-key": API_KEY || "" },
+          body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: "Diga oi em uma palavra" }] }] }),
+          signal: AbortSignal.timeout(15000),
+        }
+      );
+      const j = await r.json();
+      const ms = Date.now() - t0;
+      if (r.ok) out.push("Modelo " + model + ": FUNCIONOU em " + ms + "ms -> " + (j.candidates?.[0]?.content?.parts?.[0]?.text || "").trim());
+      else out.push("Modelo " + model + ": ERRO " + r.status + " em " + ms + "ms -> " + (j.error?.message || JSON.stringify(j)));
+    } catch (e) {
+      out.push("Modelo " + model + ": FALHOU (" + e.message + ") em " + (Date.now() - t0) + "ms");
+    }
+  }
+  res.type("text/plain; charset=utf-8").send(out.join("\n\n"));
 });
 
 const PORT = process.env.PORT || 3000;
